@@ -1,4 +1,4 @@
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, TypeVar, Union, Dict, List
 from functools import wraps
 import inspect
 from mcp.server.fastmcp import FastMCP
@@ -31,6 +31,31 @@ SERVICE_CLASSES = {
     "regional": regional_settings.RegionalSettingsService,
     "urls": url_management.UrlManagementService,
 }
+
+
+def transform_bing_response(response: Any) -> Any:
+    """Transform Bing API response to match MCP expectations.
+    
+    Bing API returns responses wrapped in {"d": [...]} format.
+    We need to unwrap this and ensure proper structure for MCP.
+    """
+    if isinstance(response, dict) and "d" in response:
+        # Unwrap the 'd' property
+        data = response["d"]
+        
+        # If it's a list, return it directly
+        if isinstance(data, list):
+            return data
+        
+        # If it's a single object, ensure it has __type at root if needed
+        elif isinstance(data, dict):
+            return data
+        
+        # Otherwise return as is
+        return data
+    
+    # If response doesn't have 'd' wrapper, return as is
+    return response
 
 
 def wrap_service_method(
@@ -71,7 +96,10 @@ def wrap_service_method(
             # Get the method from the instance
             method = getattr(service_obj, method_name)
             # Call the method directly - it's already bound to the instance
-            return await method(*args, **kwargs)
+            result = await method(*args, **kwargs)
+            
+            # Transform the response to match MCP expectations
+            return transform_bing_response(result)
 
     # Copy signature and docstring
     wrapper.__signature__ = new_sig  # type: ignore
